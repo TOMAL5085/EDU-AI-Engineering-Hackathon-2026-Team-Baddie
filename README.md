@@ -53,15 +53,15 @@ Scenario controls change inference inputs immediately; they do not retrain the m
 
 `data/dengue_weekly.csv` was extracted from the supplied `hackathon_preli_dataset - bangladesh_dengue_large_dataset.pdf` Google Sheets export. The bundled file has 10,440 weekly rows for 20 wards in Chattogram, Gazipur, and Narayanganj, dated 2016-01-04 through 2025-12-29. The supplied data has no Dhaka rows or ward boundary geometry.
 
-The app creates grouped two- and four-week weather averages/totals, a four-week case-history feature, static ward vulnerability features, and annual seasonality. Three small `RandomForestRegressor` models predict weekly case counts at weeks +2, +3, and +4. A chronological holdout uses dates from 2024-01-01 onward; training rows whose target date reached the holdout are purged. Population density remains a predictor; it is not used as a substitute for ward population.
+The app creates grouped two- and four-week weather averages/totals, a four-week case-history feature, static ward vulnerability features, and annual seasonality. For each forecast horizon, it compares compact Random Forest and Extra Trees configurations across three earlier expanding chronological validation windows, then chooses the lowest validation RMSE. The final chronological holdout begins on 2024-01-01 and is not used to select a model; training rows whose target date reached the holdout are purged. Population density remains a predictor; it is not used as a substitute for ward population.
 
-| Lead week | Holdout MAE (cases / ward-week) | Holdout RMSE (cases / ward-week) |
-|---:|---:|---:|
-| +2 | 1.14 | 2.26 |
-| +3 | 1.16 | 2.24 |
-| +4 | 1.30 | 2.49 |
+| Lead week | Selected model | Validation RMSE | Final holdout MAE | Final holdout RMSE |
+|---:|---|---:|---:|---:|
+| +2 | Extra Trees · regularized | 2.46 | 1.11 | 2.18 |
+| +3 | Extra Trees · regularized | 2.36 | 1.14 | 2.18 |
+| +4 | Random Forest · baseline | 2.85 | 1.30 | 2.49 |
 
-These metrics describe one historical time split, not a guarantee of future performance. Use the dashboard as a planning prototype; it does not issue official health alerts.
+All values are cases per ward-week. Lower MAE and RMSE values are better; they are error measurements, not accuracy percentages. These metrics describe historical periods, not a guarantee of future performance. Use the dashboard as a planning prototype; it does not issue official health alerts.
 
 ## Architecture
 

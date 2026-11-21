@@ -452,10 +452,44 @@ def main() -> None:
         summary = bundle["data_summary"]
         st.markdown("### Chronological validation")
         st.write(
-            f"The first 80% of weekly dates trained the model. The final 20% began on "
+            f"The first 80% of weekly dates selected and trained the model. The final 20% began on "
             f"**{metric['holdout_start']}** and supplied **{metric['holdout_rows']:,}** ward-week rows for evaluation. "
-            f"Training rows whose target date reached the holdout were removed."
+            f"Training rows whose target date reached the holdout were removed, and this final period was not used to choose the model."
         )
+        selection = bundle.get("selection", {}).get(horizon)
+        if selection:
+            selected_model = selection["selected"]
+            st.markdown("### Model selection")
+            st.write(
+                f"Selected **{selected_model['estimator']}** configuration "
+                f"**{selected_model['name']}** using the lowest mean RMSE "
+                f"(**{selected_model['mean_rmse']:.2f} cases / ward-week**) across "
+                f"**{len(selected_model['folds'])}** earlier chronological validation windows."
+            )
+            with st.expander("Candidate validation results"):
+                candidates = pd.DataFrame(
+                    [
+                        {
+                            "Candidate": candidate["name"],
+                            "Estimator": candidate["estimator"],
+                            "Mean RMSE": candidate["mean_rmse"],
+                            "Mean MAE": candidate["mean_mae"],
+                        }
+                        for candidate in selection["candidates"]
+                    ]
+                )
+                st.dataframe(
+                    candidates,
+                    column_config={
+                        "Mean RMSE": st.column_config.NumberColumn(format="%.2f"),
+                        "Mean MAE": st.column_config.NumberColumn(format="%.2f"),
+                    },
+                    width="stretch",
+                    hide_index=True,
+                    alt="Candidate forecasting models ranked by chronological validation error.",
+                )
+        else:
+            st.caption("This model bundle predates chronological candidate selection.")
         st.markdown("### Data coverage")
         st.write(
             f"**{summary['rows']:,}** rows · **{summary['wards']}** wards · "
