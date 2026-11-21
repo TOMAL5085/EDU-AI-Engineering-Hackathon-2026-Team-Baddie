@@ -53,13 +53,13 @@ Scenario controls change inference inputs immediately; they do not retrain the m
 
 `data/dengue_weekly.csv` was extracted from the supplied `hackathon_preli_dataset - bangladesh_dengue_large_dataset.pdf` Google Sheets export. The bundled file has 10,440 weekly rows for 20 wards in Chattogram, Gazipur, and Narayanganj, dated 2016-01-04 through 2025-12-29. The supplied data has no Dhaka rows or ward boundary geometry.
 
-The app creates grouped two- and four-week weather averages/totals, a four-week case-history feature, static ward vulnerability features, and annual seasonality. For each forecast horizon, it compares compact Random Forest and Extra Trees configurations across three earlier expanding chronological validation windows, then chooses the lowest validation RMSE. The final chronological holdout begins on 2024-01-01 and is not used to select a model; training rows whose target date reached the holdout are purged. Population density remains a predictor; it is not used as a substitute for ward population.
+The app creates grouped one-, two-, and four-week rainfall metrics, two- and four-week weather averages/totals, a four-week case-history feature, static ward vulnerability features, and annual seasonality. For each forecast horizon, it compares deterministic CPU-friendly candidate configurations (including tuned Random Forest, Extra Trees, Gradient Boosting, HistGradientBoosting, and conservative Voting Ensembles) across three earlier expanding chronological validation windows within the first 80% of dates, selecting the model with the lowest validation RMSE. The final chronological holdout begins on 2024-01-01 and is untouched until final evaluation; training rows whose target date reached a validation or holdout boundary are strictly purged to prevent future data leakage. Population density remains a predictor; it is not used as a substitute for ward population.
 
-| Lead week | Selected model | Validation RMSE | Final holdout MAE | Final holdout RMSE |
-|---:|---|---:|---:|---:|
-| +2 | Extra Trees · regularized | 2.46 | 1.11 | 2.18 |
-| +3 | Extra Trees · regularized | 2.36 | 1.14 | 2.18 |
-| +4 | Random Forest · baseline | 2.85 | 1.30 | 2.49 |
+| Lead week | Selected model | Validation RMSE | Final holdout MAE | Final holdout RMSE | Change vs baseline |
+|---:|---|---:|---:|---:|---|
+| +2 | Voting ensemble (Extra Trees + Gradient Boosting) | 2.43 | 1.13 | 2.20 | Validation RMSE improved (2.46 → 2.43); holdout RMSE 2.18 → 2.20 |
+| +3 | Extra Trees (tuned deep: 300 trees, depth 11, leaf 3) | 2.32 | 1.09 | 2.09 | Both improved: holdout RMSE 2.18 → 2.09, MAE 1.14 → 1.09 |
+| +4 | Extra Trees (regularized: 256 trees, depth 10, leaf 4) | 2.74 | 1.24 | 2.35 | Both improved: holdout RMSE 2.49 → 2.35, MAE 1.30 → 1.24 |
 
 All values are cases per ward-week. Lower MAE and RMSE values are better; they are error measurements, not accuracy percentages. These metrics describe historical periods, not a guarantee of future performance. Use the dashboard as a planning prototype; it does not issue official health alerts.
 

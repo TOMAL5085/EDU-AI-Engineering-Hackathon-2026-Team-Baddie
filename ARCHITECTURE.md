@@ -35,9 +35,22 @@ The UI labels the reference week and source-data end date so historical observat
 
 ## Model and validation
 
-Rows are sorted by ward and date. For each horizon `h` in `{2, 3, 4}`, the target is the observed weekly dengue case count at `reference week + h`. The source has population density but no ward population total, so the model does not claim a per-capita rate. Features include two- and four-week rainfall totals, two- and four-week average temperature and humidity, four-week case history, the ward vulnerability fields, city indicators, and annual seasonality.
+Rows are sorted by ward and date. For each horizon `h` in `{2, 3, 4}`, the target is the observed weekly dengue case count at `reference week + h`. The source has population density but no ward population total, so the model does not claim a per-capita rate. Features include 1-week, 2-week, and 4-week rainfall totals (providing short-term temporal resolution for mosquito breeding development), 2-week and 4-week average temperature and humidity, 4-week case history, ward vulnerability fields (water-logging risk, sanitation score, population density), city indicators, and annual seasonality harmonics.
 
-Each horizon compares a small, fixed set of CPU-friendly `RandomForestRegressor` and `ExtraTreesRegressor` configurations. Three expanding validation windows inside the first 80% of dates select the configuration with the lowest mean RMSE; training rows whose target date would cross a validation boundary are purged. The final 20% of dates remains untouched until final evaluation, with the same target-date purge. MAE and RMSE are reported in cases per ward-week on that final holdout. The selected estimator is then fitted on all eligible historical rows for the serialized bundle. Low/Medium/High/Critical cutoffs use the 75th, 90th, and 97th percentiles of training case counts for that horizon.
+Each horizon evaluates a deterministic, CPU-friendly candidate registry:
+- Tuned `RandomForestRegressor` configurations (baseline, regularized, balanced).
+- Tuned `ExtraTreesRegressor` configurations (regularized, tuned deep, tuned compact, balanced).
+- Tuned `GradientBoostingRegressor` configurations (robust, conservative, huber loss).
+- `HistGradientBoostingRegressor` with feature importance estimation.
+- Conservative `FeatureImportanceVotingRegressor` ensembles (combining Extra Trees with Gradient Boosting or Random Forest, delegating normalized `feature_importances_` to keep dashboard explanations working).
+
+Validation uses nested chronological splits:
+- The first 80% of dates (2016-01-04 through 2023-12-25) forms the development period.
+- Inside the development period, three expanding chronological validation windows select the candidate configuration with the lowest mean validation RMSE.
+- Training rows whose target date would cross a validation boundary are strictly purged to prevent target leakage.
+- The final 20% of dates (beginning 2024-01-01) remains untouched until final holdout evaluation, with the identical target-date purge.
+- Following final evaluation, the winning candidate for each horizon is refit on all eligible historical rows for the serialized model bundle (`models/dengue_risk_model.joblib`).
+- Low/Medium/High/Critical risk tiers use the 75th, 90th, and 97th percentiles of historical training cases for each horizon.
 
 The per-ward display gives an expected weekly case count. Feature importance is labelled as a model-wide signal, not a causal explanation for one ward. Scenario changes affect inference without retraining.
 
