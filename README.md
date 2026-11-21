@@ -4,16 +4,35 @@ WardWatch is a local dengue early-warning dashboard for comparing ward-level sig
 
 ## Run locally
 
-Requires Python 3.11 or newer.
+Requires Python 3.11 or newer and Git.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-streamlit run app.py
+### Windows PowerShell
+
+Copy and paste these commands into PowerShell:
+
+```powershell
+git clone https://github.com/TOMAL5085/EDU-AI-Engineering-Hackathon-2026-Team-Baddie.git
+cd EDU-AI-Engineering-Hackathon-2026-Team-Baddie
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-The repository includes the prebuilt model and dataset, so a normal launch does not train a model or call a weather service. The local app opens at the address printed by Streamlit, usually `http://localhost:8501`.
+### macOS Terminal
+
+Copy and paste these commands into Terminal:
+
+```bash
+git clone https://github.com/TOMAL5085/EDU-AI-Engineering-Hackathon-2026-Team-Baddie.git
+cd EDU-AI-Engineering-Hackathon-2026-Team-Baddie
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python -m streamlit run app.py
+```
+
+These commands use the virtual environment's Python directly, so you do not need to activate it. The repository includes the prebuilt model and dataset, so a normal launch does not train a model or call a weather service. The local app opens at the address printed by Streamlit, usually `http://localhost:8501`.
 
 To retrain after changing the CSV:
 
