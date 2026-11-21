@@ -1,0 +1,12 @@
+.venv/
+.agents/
+.claude/
+.superpowers/
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+.DS_Store
+work/
+outputs/
+docs/superpowers/
+
