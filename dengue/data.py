@@ -132,6 +132,7 @@ def build_feature_frame(data: pd.DataFrame) -> pd.DataFrame:
     rolling_specs = (
         ("rainfall_mm", 1, "rainfall_1w_mm", "sum"),
         ("rainfall_mm", 2, "rainfall_2w_mm", "sum"),
+        ("rainfall_mm", 3, "rainfall_3w_mm", "sum"),
         ("rainfall_mm", 4, "rainfall_4w_mm", "sum"),
         ("avg_temp_c", 2, "avg_temp_2w_c", "mean"),
         ("avg_temp_c", 4, "avg_temp_4w_c", "mean"),
