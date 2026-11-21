@@ -40,6 +40,7 @@ FEATURE_COLUMNS = (
     "population_density_sqkm",
     "water_logging_risk_index",
     "sanitation_score",
+    "rainfall_1w_mm",
     "rainfall_2w_mm",
     "rainfall_4w_mm",
     "avg_temp_2w_c",
@@ -129,6 +130,7 @@ def build_feature_frame(data: pd.DataFrame) -> pd.DataFrame:
     frame = frame.sort_values(["ward_id", "date"]).reset_index(drop=True)
 
     rolling_specs = (
+        ("rainfall_mm", 1, "rainfall_1w_mm", "sum"),
         ("rainfall_mm", 2, "rainfall_2w_mm", "sum"),
         ("rainfall_mm", 4, "rainfall_4w_mm", "sum"),
         ("avg_temp_c", 2, "avg_temp_2w_c", "mean"),
@@ -143,7 +145,11 @@ def build_feature_frame(data: pd.DataFrame) -> pd.DataFrame:
         )
         frame[output] = rolling
 
-    week_fraction = frame["date"].dt.dayofyear / 365.25
+    if hasattr(frame["date"].dt, "day_of_year"):
+        day_of_year = frame["date"].dt.day_of_year
+    else:
+        day_of_year = frame["date"].dt.dayofyear
+    week_fraction = day_of_year / 365.25
     frame["week_sin"] = np.sin(2 * np.pi * week_fraction)
     frame["week_cos"] = np.cos(2 * np.pi * week_fraction)
     for city in CITY_LEVELS:

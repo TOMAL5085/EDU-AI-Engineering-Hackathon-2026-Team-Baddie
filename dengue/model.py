@@ -10,7 +10,13 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
+from sklearn.ensemble import (
+    ExtraTreesRegressor,
+    GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
+    RandomForestRegressor,
+    VotingRegressor,
+)
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from .data import DATA_PATH, FEATURE_COLUMNS, build_feature_frame, load_dataset
@@ -18,8 +24,44 @@ from .data import DATA_PATH, FEATURE_COLUMNS, build_feature_frame, load_dataset
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "models" / "dengue_risk_model.joblib"
 HORIZONS = (2, 3, 4)
-MODEL_FORMAT_VERSION = 2
+MODEL_FORMAT_VERSION = 3
 INNER_FOLD_FRACTIONS = (0.55, 0.70, 0.85)
+
+
+class FeatureImportanceVotingRegressor(VotingRegressor):
+    """Voting ensemble exposing normalized feature_importances_ averaged across its estimators."""
+
+    @property
+    def feature_importances_(self) -> np.ndarray:
+        importances = [
+            getattr(est, "feature_importances_", None)
+            for est in self.estimators_
+        ]
+        valid = [imp for imp in importances if imp is not None]
+        if not valid:
+            raise AttributeError("None of the underlying estimators expose feature_importances_")
+        mean_imp = np.mean(valid, axis=0)
+        total = np.sum(mean_imp)
+        return mean_imp / total if total > 0 else mean_imp
+
+
+class HistGradientBoostingWithImportance(HistGradientBoostingRegressor):
+    """HistGradientBoostingRegressor exposing estimated feature importances."""
+
+    def fit(self, X, y, sample_weight=None):
+        super().fit(X, y, sample_weight=sample_weight)
+        n_features = X.shape[1] if hasattr(X, "shape") else len(X.columns)
+        counts = np.zeros(n_features, dtype=float)
+        for predictor in getattr(self, "_predictors", []):
+            for tree in predictor:
+                for node in getattr(tree, "nodes", []):
+                    if not node["is_leaf"]:
+                        counts[node["feature_idx"]] += 1.0
+        total = np.sum(counts)
+        self.feature_importances_ = counts / total if total > 0 else np.ones(n_features) / n_features
+        return self
+
+
 MODEL_CANDIDATES: tuple[dict[str, Any], ...] = (
     {
         "name": "random_forest_baseline",
@@ -27,14 +69,29 @@ MODEL_CANDIDATES: tuple[dict[str, Any], ...] = (
         "parameters": {"n_estimators": 96, "max_depth": 9, "min_samples_leaf": 4, "max_features": 0.9},
     },
     {
+        "name": "random_forest_regularized",
+        "estimator": RandomForestRegressor,
+        "parameters": {"n_estimators": 250, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.85},
+    },
+    {
         "name": "random_forest_balanced",
         "estimator": RandomForestRegressor,
         "parameters": {"n_estimators": 192, "max_depth": 14, "min_samples_leaf": 2, "max_features": 0.8},
     },
     {
-        "name": "random_forest_deep",
-        "estimator": RandomForestRegressor,
-        "parameters": {"n_estimators": 192, "max_depth": None, "min_samples_leaf": 1, "max_features": 1.0},
+        "name": "extra_trees_regularized",
+        "estimator": ExtraTreesRegressor,
+        "parameters": {"n_estimators": 256, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.9},
+    },
+    {
+        "name": "extra_trees_tuned_deep",
+        "estimator": ExtraTreesRegressor,
+        "parameters": {"n_estimators": 300, "max_depth": 11, "min_samples_leaf": 3, "max_features": 0.8},
+    },
+    {
+        "name": "extra_trees_tuned_compact",
+        "estimator": ExtraTreesRegressor,
+        "parameters": {"n_estimators": 300, "max_depth": 9, "min_samples_leaf": 4, "max_features": 0.85},
     },
     {
         "name": "extra_trees_balanced",
@@ -42,14 +99,55 @@ MODEL_CANDIDATES: tuple[dict[str, Any], ...] = (
         "parameters": {"n_estimators": 192, "max_depth": 14, "min_samples_leaf": 2, "max_features": 0.8},
     },
     {
-        "name": "extra_trees_deep",
-        "estimator": ExtraTreesRegressor,
-        "parameters": {"n_estimators": 192, "max_depth": None, "min_samples_leaf": 1, "max_features": 1.0},
+        "name": "gradient_boosting_robust",
+        "estimator": GradientBoostingRegressor,
+        "parameters": {"n_estimators": 150, "learning_rate": 0.04, "max_depth": 3, "subsample": 0.85},
     },
     {
-        "name": "extra_trees_regularized",
-        "estimator": ExtraTreesRegressor,
-        "parameters": {"n_estimators": 256, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.9},
+        "name": "gradient_boosting_conservative",
+        "estimator": GradientBoostingRegressor,
+        "parameters": {"n_estimators": 200, "learning_rate": 0.03, "max_depth": 3, "subsample": 0.8},
+    },
+    {
+        "name": "gradient_boosting_huber",
+        "estimator": GradientBoostingRegressor,
+        "parameters": {"n_estimators": 120, "learning_rate": 0.05, "max_depth": 3, "loss": "huber", "subsample": 0.85},
+    },
+    {
+        "name": "hist_gradient_boosting",
+        "estimator": HistGradientBoostingWithImportance,
+        "parameters": {"max_iter": 120, "learning_rate": 0.04, "max_depth": 4, "min_samples_leaf": 15},
+    },
+    {
+        "name": "voting_et_gb",
+        "estimator": FeatureImportanceVotingRegressor,
+        "parameters": {
+            "estimators": [
+                ("et", ExtraTreesRegressor, {"n_estimators": 256, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.9}),
+                ("gb", GradientBoostingRegressor, {"n_estimators": 150, "learning_rate": 0.04, "max_depth": 3, "subsample": 0.85}),
+            ]
+        },
+    },
+    {
+        "name": "voting_et_rf_gb",
+        "estimator": FeatureImportanceVotingRegressor,
+        "parameters": {
+            "estimators": [
+                ("et", ExtraTreesRegressor, {"n_estimators": 256, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.9}),
+                ("rf", RandomForestRegressor, {"n_estimators": 250, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.85}),
+                ("gb", GradientBoostingRegressor, {"n_estimators": 150, "learning_rate": 0.04, "max_depth": 3, "subsample": 0.85}),
+            ]
+        },
+    },
+    {
+        "name": "voting_et_rf",
+        "estimator": FeatureImportanceVotingRegressor,
+        "parameters": {
+            "estimators": [
+                ("et", ExtraTreesRegressor, {"n_estimators": 256, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.9}),
+                ("rf", RandomForestRegressor, {"n_estimators": 250, "max_depth": 10, "min_samples_leaf": 4, "max_features": 0.85}),
+            ]
+        },
     },
 )
 
@@ -66,9 +164,25 @@ def risk_tier(predicted_cases: float, cutoffs: dict[str, float]) -> str:
     return "Critical"
 
 
-def _build_estimator(candidate: dict[str, Any]) -> RandomForestRegressor | ExtraTreesRegressor:
-    """Create one deterministic, CPU-parallel tree estimator from a candidate."""
-    return candidate["estimator"](**candidate["parameters"], random_state=42, n_jobs=-1)
+def _build_estimator(candidate: dict[str, Any]) -> Any:
+    """Create one deterministic, CPU-parallel estimator from a candidate specification."""
+    estimator_cls = candidate["estimator"]
+    params = dict(candidate["parameters"])
+
+    if estimator_cls is FeatureImportanceVotingRegressor:
+        sub_specs = params.get("estimators", [])
+        estimators_list = []
+        for name, sub_cls, sub_params in sub_specs:
+            if sub_cls in (RandomForestRegressor, ExtraTreesRegressor):
+                est = sub_cls(**sub_params, random_state=42, n_jobs=-1)
+            else:
+                est = sub_cls(**sub_params, random_state=42)
+            estimators_list.append((name, est))
+        return FeatureImportanceVotingRegressor(estimators=estimators_list, n_jobs=-1)
+
+    if estimator_cls in (RandomForestRegressor, ExtraTreesRegressor):
+        return estimator_cls(**params, random_state=42, n_jobs=-1)
+    return estimator_cls(**params, random_state=42)
 
 
 def _inner_fold_ranges(development_dates: list[pd.Timestamp], final_holdout_start: pd.Timestamp) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
@@ -118,10 +232,17 @@ def _candidate_result(
             }
         )
 
+    params = {}
+    for k, v in candidate["parameters"].items():
+        if k == "estimators":
+            params[k] = [f"{name}:{sub_cls.__name__}" for name, sub_cls, _ in v]
+        else:
+            params[k] = v
+
     return {
         "name": candidate["name"],
         "estimator": candidate["estimator"].__name__,
-        "parameters": dict(candidate["parameters"]),
+        "parameters": params,
         "mean_mae": float(np.mean([fold["mae"] for fold in folds])),
         "mean_rmse": float(np.mean([fold["rmse"] for fold in folds])),
         "folds": folds,
@@ -142,7 +263,7 @@ def train_model_bundle(
     split_index = int(len(valid_dates) * 0.8)
     split_index = min(max(split_index, 1), len(valid_dates) - 1)
     holdout_start = pd.Timestamp(valid_dates[split_index])
-    models: dict[int, RandomForestRegressor | ExtraTreesRegressor] = {}
+    models: dict[int, Any] = {}
     metrics: dict[int, dict[str, Any]] = {}
     thresholds: dict[int, dict[str, float]] = {}
     selection: dict[int, dict[str, Any]] = {}
@@ -240,7 +361,7 @@ def load_model_bundle(path: str | Path = MODEL_PATH) -> dict[str, Any]:
             f"Model bundle not found at {source}. Run `python scripts/train_model.py` first."
         )
     bundle = joblib.load(source)
-    if bundle.get("format_version") not in (1, MODEL_FORMAT_VERSION):
+    if bundle.get("format_version") not in (1, 2, MODEL_FORMAT_VERSION):
         raise ValueError("Unsupported model bundle format; rebuild with `python scripts/train_model.py`.")
     return bundle
 

@@ -24,6 +24,7 @@ FEATURE_LABELS = {
     "population_density_sqkm": "Population density",
     "water_logging_risk_index": "Water-logging risk",
     "sanitation_score": "Sanitation score",
+    "rainfall_1w_mm": "Rainfall · 1 week",
     "rainfall_2w_mm": "Rainfall · 2 weeks",
     "rainfall_4w_mm": "Rainfall · 4 weeks",
     "avg_temp_2w_c": "Average temperature · 2 weeks",
@@ -303,6 +304,7 @@ def main() -> None:
     selected = selected_row(features, ward_id, reference_ts)
     observed_week = pd.Timestamp(selected["date"])
     scenario_defaults = {
+        "rainfall_1w_mm": as_float(selected.get("rainfall_1w_mm", selected["rainfall_2w_mm"] / 2.0)),
         "rainfall_2w_mm": as_float(selected["rainfall_2w_mm"]),
         "rainfall_4w_mm": as_float(selected["rainfall_4w_mm"]),
         "avg_temp_2w_c": as_float(selected["avg_temp_2w_c"], 27.0),
@@ -312,14 +314,18 @@ def main() -> None:
     }
     st.sidebar.markdown("### Weather scenario")
     st.sidebar.caption("Defaults use the selected ward's observed rolling values.")
+    rainfall_1w = st.sidebar.slider(
+        "Rainfall · 1 week (mm)", 0.0, 400.0, capped_slider_default(scenario_defaults["rainfall_1w_mm"], 400), 5.0
+    )
     rainfall_2w = st.sidebar.slider(
-        "Rainfall · 2 weeks (mm)", 0.0, 600.0, capped_slider_default(scenario_defaults["rainfall_2w_mm"], 600), 5.0
+        "Rainfall · 2 weeks (mm)", float(rainfall_1w), 600.0, capped_slider_default(max(scenario_defaults["rainfall_2w_mm"], rainfall_1w), 600), 5.0
     )
     rainfall_4w_default = min(max(scenario_defaults["rainfall_4w_mm"], rainfall_2w), 1_200.0)
     rainfall_4w = st.sidebar.slider(
         "Rainfall · 4 weeks (mm)", float(rainfall_2w), 1_200.0, rainfall_4w_default, 10.0
     )
     scenario = {
+        "rainfall_1w_mm": rainfall_1w,
         "rainfall_2w_mm": rainfall_2w,
         "rainfall_4w_mm": rainfall_4w,
         "avg_temp_2w_c": st.sidebar.slider(
@@ -436,12 +442,13 @@ def main() -> None:
         with right:
             st.markdown("### Weather inputs for this scenario")
             w1, w2 = st.columns(2)
-            w1.metric("Rainfall · 2 weeks", f"{scenario['rainfall_2w_mm']:.0f} mm")
-            w2.metric("Rainfall · 4 weeks", f"{scenario['rainfall_4w_mm']:.0f} mm")
-            w1.metric("Average temp · 2 weeks", f"{scenario['avg_temp_2w_c']:.1f} °C")
-            w2.metric("Average temp · 4 weeks", f"{scenario['avg_temp_4w_c']:.1f} °C")
-            w1.metric("Humidity · 2 weeks", f"{scenario['relative_humidity_2w_pct']:.0f}%")
-            w2.metric("Humidity · 4 weeks", f"{scenario['relative_humidity_4w_pct']:.0f}%")
+            w1.metric("Rainfall · 1 week", f"{scenario['rainfall_1w_mm']:.0f} mm")
+            w2.metric("Rainfall · 2 weeks", f"{scenario['rainfall_2w_mm']:.0f} mm")
+            w1.metric("Rainfall · 4 weeks", f"{scenario['rainfall_4w_mm']:.0f} mm")
+            w2.metric("Average temp · 2 weeks", f"{scenario['avg_temp_2w_c']:.1f} °C")
+            w1.metric("Average temp · 4 weeks", f"{scenario['avg_temp_4w_c']:.1f} °C")
+            w2.metric("Humidity · 2 weeks", f"{scenario['relative_humidity_2w_pct']:.0f}%")
+            st.metric("Humidity · 4 weeks", f"{scenario['relative_humidity_4w_pct']:.0f}%")
             cutoffs = prediction["cutoffs"]
             st.markdown(
                 f"<div class='soft-card'><h3>Tier boundaries for week +{horizon}</h3><p>Medium ≥ {cutoffs['medium']:.1f} · High ≥ {cutoffs['high']:.1f} · Critical ≥ {cutoffs['critical']:.1f} cases per ward per week.</p></div>",
