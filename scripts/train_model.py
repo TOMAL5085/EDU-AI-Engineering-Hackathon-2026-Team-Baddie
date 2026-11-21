@@ -20,6 +20,13 @@ if __name__ == "__main__":
                 "model_path": str(MODEL_PATH.relative_to(ROOT)),
                 "data_summary": bundle["data_summary"],
                 "metrics": bundle["metrics"],
+                "selection": {
+                    horizon: {
+                        "candidate": bundle["selection"][horizon]["selected"]["name"],
+                        "validation_rmse": bundle["selection"][horizon]["selected"]["mean_rmse"],
+                    }
+                    for horizon in bundle.get("selection", {})
+                },
                 "versions": bundle["versions"],
             },
             indent=2,
